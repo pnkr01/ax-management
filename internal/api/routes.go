@@ -29,4 +29,5 @@ func SetupRoutes(app *fiber.App, h *Handler) {
 	auth := v1.Group("/auth")
 	auth.Post("/register", h.Register)
 	auth.Post("/login", h.Login)
+	auth.Post("/logout", h.Logout)
 }

@@ -55,3 +55,8 @@ func (s *ManagementService) CreateApiKey(tenantID uuid.UUID, name string) (*mode
 	// Return both the DB model AND the raw string so the handler can show it to the user
 	return apiKey, rawKey, nil
 }
+
+// -> ADD THIS BLOCK:
+func (s *ManagementService) GetFirstTenant() (*models.Tenant, error) {
+	return s.repo.GetFirstTenant()
+}

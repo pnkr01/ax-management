@@ -51,34 +51,34 @@ func (h *Handler) Register(c *fiber.Ctx) error {
 	return c.Status(201).JSON(fiber.Map{"message": "Registration successful", "user_id": user.ID})
 }
 
-func (h *Handler) Login(c *fiber.Ctx) error {
-	var req models.LoginRequest
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Invalid request payload"})
-	}
-
-	user, err := h.authSvc.AuthenticateUser(req.Email, req.Password)
-	if err != nil {
-		return c.Status(401).JSON(fiber.Map{"error": err.Error()})
-	}
-
-	token, err := h.authSvc.GenerateJWT(user.ID, user.Email)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to generate session"})
-	}
-
-	c.Cookie(&fiber.Cookie{
-		Name:     "AX_SESSION",
-		Value:    token,
-		Expires:  time.Now().Add(24 * time.Hour),
-		HTTPOnly: true,
-		Secure:   h.isProd,
-		SameSite: "Lax",
-		Path:     "/",
-	})
-
-	return c.Status(200).JSON(fiber.Map{"message": "Login successful", "user_id": user.ID})
-}
+//func (h *Handler) Login(c *fiber.Ctx) error {
+//	var req models.LoginRequest
+//	if err := c.BodyParser(&req); err != nil {
+//		return c.Status(400).JSON(fiber.Map{"error": "Invalid request payload"})
+//	}
+//
+//	user, err := h.authSvc.AuthenticateUser(req.Email, req.Password)
+//	if err != nil {
+//		return c.Status(401).JSON(fiber.Map{"error": err.Error()})
+//	}
+//
+//	token, err := h.authSvc.GenerateJWT(user.ID, user.Email)
+//	if err != nil {
+//		return c.Status(500).JSON(fiber.Map{"error": "Failed to generate session"})
+//	}
+//
+//	c.Cookie(&fiber.Cookie{
+//		Name:     "AX_SESSION",
+//		Value:    token,
+//		Expires:  time.Now().Add(24 * time.Hour),
+//		HTTPOnly: true,
+//		Secure:   h.isProd,
+//		SameSite: "Lax",
+//		Path:     "/",
+//	})
+//
+//	return c.Status(200).JSON(fiber.Map{"message": "Login successful", "user_id": user.ID})
+//}
 
 // ==========================================
 // TENANT & WORKSPACE ROUTES
@@ -151,4 +151,61 @@ func (h *Handler) CreateKey(c *fiber.Ctx) error {
 		"message": "Key created successfully",
 		"api_key": rawKey,
 	})
+}
+
+// --- UPDATED LOGIN HANDLER ---
+func (h *Handler) Login(c *fiber.Ctx) error {
+	var req models.LoginRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	user, err := h.authSvc.AuthenticateUser(req.Email, req.Password)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// SMART ROUTING CHECK: Check if any workspace exists
+	tenantSlug := ""
+	tenant, err := h.svc.GetFirstTenant()
+	if err == nil && tenant != nil {
+		tenantSlug = tenant.Slug // Grab the slug (e.g., "fid")
+	}
+
+	token, err := h.authSvc.GenerateJWT(user.ID, user.Email)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to generate session"})
+	}
+
+	c.Cookie(&fiber.Cookie{
+		Name:     "AX_SESSION",
+		Value:    token,
+		Expires:  time.Now().Add(24 * time.Hour),
+		HTTPOnly: true,
+		Secure:   h.isProd,
+		SameSite: "Lax",
+		Path:     "/",
+	})
+
+	// Return the slug back to Next.js
+	return c.Status(200).JSON(fiber.Map{
+		"message":     "Login successful",
+		"tenant_slug": tenantSlug,
+	})
+}
+
+// --- NEW LOGOUT HANDLER ---
+func (h *Handler) Logout(c *fiber.Ctx) error {
+	// Overwrite the cookie with an empty value and an expiration time in the past
+	c.Cookie(&fiber.Cookie{
+		Name:     "AX_SESSION",
+		Value:    "",
+		Expires:  time.Now().Add(-1 * time.Hour), // Expired!
+		HTTPOnly: true,
+		Secure:   h.isProd,
+		SameSite: "Lax",
+		Path:     "/",
+	})
+
+	return c.Status(200).JSON(fiber.Map{"message": "Logged out successfully"})
 }

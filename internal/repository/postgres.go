@@ -13,6 +13,7 @@ type ManagementRepository interface {
 	GetTenantByID(id uuid.UUID) (*models.Tenant, error)
 	GetTenantBySlug(slug string) (*models.Tenant, error)
 	CreateApiKey(key *models.ApiKey) error
+	GetFirstTenant() (*models.Tenant, error)
 }
 
 type pgRepo struct {
@@ -41,6 +42,14 @@ func (r *pgRepo) CreateApiKey(k *models.ApiKey) error {
 func (r *pgRepo) GetTenantBySlug(slug string) (*models.Tenant, error) {
 	var tenant models.Tenant
 	if err := r.db.Where("slug = ?", slug).First(&tenant).Error; err != nil {
+		return nil, err
+	}
+	return &tenant, nil
+}
+
+func (r *pgRepo) GetFirstTenant() (*models.Tenant, error) {
+	var tenant models.Tenant
+	if err := r.db.First(&tenant).Error; err != nil {
 		return nil, err
 	}
 	return &tenant, nil
