@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 type Handler struct {
@@ -50,39 +51,6 @@ func (h *Handler) Register(c *fiber.Ctx) error {
 
 	return c.Status(201).JSON(fiber.Map{"message": "Registration successful", "user_id": user.ID})
 }
-
-//func (h *Handler) Login(c *fiber.Ctx) error {
-//	var req models.LoginRequest
-//	if err := c.BodyParser(&req); err != nil {
-//		return c.Status(400).JSON(fiber.Map{"error": "Invalid request payload"})
-//	}
-//
-//	user, err := h.authSvc.AuthenticateUser(req.Email, req.Password)
-//	if err != nil {
-//		return c.Status(401).JSON(fiber.Map{"error": err.Error()})
-//	}
-//
-//	token, err := h.authSvc.GenerateJWT(user.ID, user.Email)
-//	if err != nil {
-//		return c.Status(500).JSON(fiber.Map{"error": "Failed to generate session"})
-//	}
-//
-//	c.Cookie(&fiber.Cookie{
-//		Name:     "AX_SESSION",
-//		Value:    token,
-//		Expires:  time.Now().Add(24 * time.Hour),
-//		HTTPOnly: true,
-//		Secure:   h.isProd,
-//		SameSite: "Lax",
-//		Path:     "/",
-//	})
-//
-//	return c.Status(200).JSON(fiber.Map{"message": "Login successful", "user_id": user.ID})
-//}
-
-// ==========================================
-// TENANT & WORKSPACE ROUTES
-// ==========================================
 
 func (h *Handler) CreateTenant(c *fiber.Ctx) error {
 	// Maps to the Next.js Workspace Setup form
@@ -208,4 +176,144 @@ func (h *Handler) Logout(c *fiber.Ctx) error {
 	})
 
 	return c.Status(200).JSON(fiber.Map{"message": "Logged out successfully"})
+}
+
+// ==========================================
+// REAL DATA HANDLERS (Paste at bottom of handler.go)
+// ==========================================
+
+func (h *Handler) GetMe(c *fiber.Ctx) error {
+	// Extract the user ID injected by the JWT Middleware
+	userIDStr := c.Locals("userID").(string)
+
+	// Note: If you don't have GetUserByID in your auth service yet,
+	// you can mock this response for now or add the DB lookup to authSvc.
+	return c.JSON(fiber.Map{
+		"id":    userIDStr,
+		"name":  "Enterprise User", // Fallback if DB lookup isn't wired yet
+		"email": c.Locals("userEmail"),
+		"role":  "OWNER",
+	})
+}
+
+func (h *Handler) GetKeys(c *fiber.Ctx) error {
+	slug := c.Params("slug")
+	tenant, err := h.svc.GetTenantBySlug(slug)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Tenant not found"})
+	}
+
+	keys, err := h.svc.GetKeysByTenant(tenant.ID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch keys"})
+	}
+
+	// Format for UI
+	var formattedKeys []fiber.Map
+	for _, k := range keys {
+		status := "active"
+		if !k.IsActive {
+			status = "revoked"
+		}
+		formattedKeys = append(formattedKeys, fiber.Map{
+			"id":           k.ID,
+			"name":         k.Name,
+			"prefix":       k.KeyPrefix,
+			"created_at":   k.CreatedAt.Format(time.RFC3339),
+			"status":       status,
+			"last_used_at": nil,
+		})
+	}
+
+	return c.JSON(fiber.Map{"keys": formattedKeys})
+}
+
+func (h *Handler) GetTeamMembers(c *fiber.Ctx) error {
+	slug := c.Params("slug")
+	tenant, err := h.svc.GetTenantBySlug(slug)
+	if err != nil || tenant == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Tenant not found"})
+	}
+
+	members, err := h.svc.GetTeamMembers(tenant.ID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch team"})
+	}
+
+	var formattedMembers []fiber.Map
+	for _, m := range members {
+		formattedMembers = append(formattedMembers, fiber.Map{
+			"id":        m.ID,
+			"name":      m.User.FullName,
+			"email":     m.User.Email,
+			"role":      m.Role,
+			"status":    m.Status,
+			"joined_at": m.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
+	return c.JSON(fiber.Map{"members": formattedMembers})
+}
+
+func (h *Handler) GetAnalyticsOverview(c *fiber.Ctx) error {
+	slug := c.Params("slug")
+	tenant, _ := h.svc.GetTenantBySlug(slug)
+
+	kpis, err := h.svc.GetOverviewKPIs(tenant.ID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to calculate KPIs"})
+	}
+
+	return c.JSON(kpis)
+}
+
+func (h *Handler) RunFunnelQuery(c *fiber.Ctx) error {
+	slug := c.Params("slug")
+	tenant, _ := h.svc.GetTenantBySlug(slug)
+
+	var req struct {
+		Steps []string `json:"steps"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request payload"})
+	}
+
+	results, err := h.svc.GetFunnelData(tenant.ID, req.Steps)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to run query"})
+	}
+
+	// Apply UI colors based on step
+	colors := []string{"#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe"}
+	for i, r := range results {
+		colorIdx := i % len(colors)
+		r["color"] = colors[colorIdx]
+	}
+
+	return c.JSON(fiber.Map{"results": results})
+}
+
+// UPDATED: Pass c.Context() to the service layer
+func (h *Handler) RevokeKey(c *fiber.Ctx) error {
+	slug := c.Params("slug")
+	keyIDStr := c.Params("keyId")
+
+	// Parse the UUID from the URL
+	keyID, err := uuid.Parse(keyIDStr)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid Key ID format"})
+	}
+
+	// Validate the Tenant
+	tenant, err := h.svc.GetTenantBySlug(slug)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Tenant not found"})
+	}
+
+	// Execute Revocation (Passing Fiber's context into the service)
+	if err := h.svc.RevokeApiKey(c.Context(), tenant.ID, keyID); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to revoke key"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Key revoked successfully"})
 }

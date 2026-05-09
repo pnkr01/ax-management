@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type Tenant struct {
@@ -22,6 +23,7 @@ type ApiKey struct {
 	Name      string    `gorm:"type:varchar(100)"`
 	IsActive  bool      `gorm:"default:true"`
 	CreatedAt time.Time
+	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 
 type CreateTenantRequest struct {
@@ -48,4 +50,29 @@ type RegisterRequest struct {
 type LoginRequest struct {
 	Email    string `json:"email" validate:"required"`
 	Password string `json:"password" validate:"required"`
+}
+
+// Add this to your existing internal/model/domain.go
+
+type TeamMember struct {
+	ID        uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	TenantID  uuid.UUID `gorm:"type:uuid;index;not null"`
+	UserID    uuid.UUID `gorm:"type:uuid;index;not null"`
+	Role      string    `gorm:"type:varchar(50);default:'VIEWER'"` // OWNER, ADMIN, VIEWER
+	Status    string    `gorm:"type:varchar(50);default:'ACTIVE'"`
+	CreatedAt time.Time
+
+	// Relationships
+	User User `gorm:"foreignKey:UserID"`
+}
+
+// TelemetryEvent represents a single span/event ingested from your AI Agents
+type TelemetryEvent struct {
+	ID        uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	TenantID  uuid.UUID `gorm:"type:uuid;index;not null"`
+	TraceID   string    `gorm:"type:varchar(255);index"`
+	Step      string    `gorm:"type:varchar(255);index;not null"` // e.g., "voice_input_received"
+	LatencyMs int       `gorm:"type:int;default:0"`
+	IsError   bool      `gorm:"default:false"`
+	CreatedAt time.Time `gorm:"index"`
 }

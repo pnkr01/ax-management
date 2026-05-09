@@ -26,7 +26,13 @@ func main() {
 	}
 
 	// Auto-Migrate (Enterprise Tip: In production, use 'golang-migrate' instead)
-	db.AutoMigrate(&models.User{}, &models.Tenant{}, &models.ApiKey{})
+	db.AutoMigrate(
+		&models.User{},
+		&models.Tenant{},
+		&models.ApiKey{},
+		&models.TeamMember{},
+		&models.TelemetryEvent{},
+	)
 
 	// 3. Cache Initialization
 	rdb, err := repository.NewRedisClient(cfg.RedisAddr)

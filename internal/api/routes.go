@@ -23,11 +23,18 @@ func SetupRoutes(app *fiber.App, h *Handler) {
 	tenants.Post("/", h.CreateTenant)
 
 	// Use exactly :slug here (all lowercase)
-	tenants.Post("/:slug/keys", h.CreateKey)
 
 	/// Auth Routes (Public)
 	auth := v1.Group("/auth")
 	auth.Post("/register", h.Register)
 	auth.Post("/login", h.Login)
 	auth.Post("/logout", h.Logout)
+
+	tenants.Post("/:slug/keys", h.CreateKey)
+	tenants.Get("/:slug/keys", h.GetKeys)
+	tenants.Get("/:slug/members", h.GetTeamMembers)
+	tenants.Get("/:slug/analytics/overview", h.GetAnalyticsOverview)
+	tenants.Post("/:slug/analytics/funnels", h.RunFunnelQuery)
+
+	tenants.Delete("/:slug/keys/:keyId", h.RevokeKey)
 }

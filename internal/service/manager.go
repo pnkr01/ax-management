@@ -57,7 +57,10 @@ func (s *ManagementService) GenerateApiKey(tenantID uuid.UUID) (string, error) {
 
 	// 4. Sync to Redis for the Data Plane
 	redisKey := fmt.Sprintf("apikey:%s", rawKey)
-	s.cache.Set(context.Background(), redisKey, tenant.Slug, 0)
+	err = s.cache.Set(context.Background(), redisKey, tenant.Slug, 0).Err()
+	if err != nil {
+		fmt.Printf("Warning: Failed to invalidate redis cache for tenant %s: %v\n", tenant, err)
+	}
 
 	return rawKey, nil
 }
